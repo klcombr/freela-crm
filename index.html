@@ -1,0 +1,332 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Freela CRM — leads, clientes e receita</title>
+<style>
+:root {
+  --bg:#0d1117; --panel:#161b22; --line:#30363d; --ink:#e6edf3; --dim:#8b949e;
+  --accent:#2f81f7; --ok:#3fb950; --warn:#d29922; --bad:#f85149;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 ui-sans-serif,system-ui,-apple-system,Segoe UI,sans-serif}
+header{display:flex;justify-content:space-between;align-items:center;gap:16px;padding:20px 24px;border-bottom:1px solid var(--line);flex-wrap:wrap;position:sticky;top:0;background:var(--bg);z-index:10}
+h1{margin:0;font-size:20px;letter-spacing:-.02em}
+nav{display:flex;gap:6px}
+nav button{background:transparent;color:var(--dim);border:1px solid var(--line);padding:8px 14px;border-radius:8px;cursor:pointer;font:inherit;font-size:14px}
+nav button[aria-current="true"]{background:var(--panel);color:var(--ink);border-color:var(--accent)}
+main{padding:24px;max-width:1400px;margin:0 auto}
+h2{font-size:13px;text-transform:uppercase;letter-spacing:.07em;color:var(--dim);margin:0 0 12px}
+.hidden{display:none !important}
+
+/* cards / stats */
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:14px;margin-bottom:28px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:18px}
+.card h3{margin:0 0 6px;font-size:12px;text-transform:uppercase;letter-spacing:.06em;color:var(--dim)}
+.card .v{font-size:28px;font-weight:650;font-variant-numeric:tabular-nums}
+
+/* kanban */
+.board{display:grid;grid-template-columns:repeat(4,minmax(240px,1fr));gap:14px;align-items:start}
+.col{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px;min-height:120px}
+.col.over{border-color:var(--accent);background:#1b2230}
+.col h3{margin:0 0 12px;font-size:13px;text-transform:uppercase;letter-spacing:.06em;color:var(--dim);display:flex;justify-content:space-between}
+.lead{background:var(--bg);border:1px solid var(--line);border-left:3px solid var(--dim);border-radius:8px;padding:12px;margin-bottom:10px;cursor:grab}
+.lead[draggable="true"]:active{cursor:grabbing}
+.lead .name{font-weight:600}
+.lead .co,.lead .note{color:var(--dim);font-size:13px}
+.lead .foot{display:flex;justify-content:space-between;align-items:center;margin-top:8px;gap:8px}
+.lead .val{font-variant-numeric:tabular-nums;font-weight:600}
+.lead button{background:none;border:none;color:var(--dim);cursor:pointer;font-size:15px;padding:2px 6px}
+.lead button:hover{color:var(--bad)}
+.badge{font-size:11px;padding:2px 8px;border-radius:999px;border:1px solid var(--line);color:var(--dim)}
+.badge.due{color:var(--warn);border-color:var(--warn)}
+.badge.late{color:var(--bad);border-color:var(--bad)}
+
+/* forms & tables */
+form.inline{display:flex;gap:10px;flex-wrap:wrap;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:16px;margin-bottom:20px}
+input,select,textarea{font:inherit;padding:10px 12px;border-radius:8px;border:1px solid var(--line);background:var(--bg);color:var(--ink)}
+input:focus,select:focus,textarea:focus{outline:2px solid var(--accent);border-color:transparent}
+button.primary{background:var(--accent);color:#fff;border:none;padding:10px 18px;border-radius:8px;font-weight:600;cursor:pointer}
+button.primary:hover{filter:brightness(1.1)}
+table{width:100%;border-collapse:collapse}
+th,td{text-align:left;padding:12px 10px;border-bottom:1px solid var(--line)}
+th{font-size:12px;text-transform:uppercase;letter-spacing:.06em;color:var(--dim)}
+td.num{text-align:right;font-variant-numeric:tabular-nums}
+.empty{color:var(--dim);padding:20px 0}
+.right{text-align:right}
+</style>
+</head>
+<body>
+<header>
+  <h1>Freela CRM</h1>
+  <nav>
+    <button data-view="dashboard">Painel</button>
+    <button data-view="pipeline">Pipeline</button>
+    <button data-view="clients">Clientes</button>
+    <button data-view="revenue">Receita</button>
+  </nav>
+</header>
+
+<main>
+  <section id="view-dashboard">
+    <div class="stats" id="stats"></div>
+    <h2>Follow-ups pendentes</h2>
+    <ul id="followups" style="list-style:none;padding:0"></ul>
+  </section>
+
+  <section id="view-pipeline" class="hidden">
+    <form class="inline" id="lead-form">
+      <input name="name" placeholder="Nome do lead" required>
+      <input name="company" placeholder="Empresa">
+      <input name="email" type="email" placeholder="email@exemplo.com">
+      <input name="phone" placeholder="Telefone">
+      <input name="value" type="number" min="0" step="0.01" placeholder="Valor (R$)" style="width:130px">
+      <input name="followup" type="date" title="Follow-up">
+      <button class="primary" type="submit">Adicionar lead</button>
+    </form>
+    <div class="board" id="board"></div>
+  </section>
+
+  <section id="view-clients" class="hidden">
+    <form class="inline" id="client-form">
+      <input name="name" placeholder="Nome" required>
+      <input name="company" placeholder="Empresa">
+      <input name="email" type="email" placeholder="email@exemplo.com">
+      <input name="phone" placeholder="Telefone">
+      <input name="notes" placeholder="Notas" style="flex:1;min-width:200px">
+      <button class="primary" type="submit">Cadastrar cliente</button>
+    </form>
+    <table><thead><tr><th>Nome</th><th>Empresa</th><th>Contato</th><th>Notas</th><th></th></tr></thead><tbody id="clients-body"></tbody></table>
+  </section>
+
+  <section id="view-revenue" class="hidden">
+    <form class="inline" id="payment-form">
+      <input name="client" placeholder="Cliente" required>
+      <input name="description" placeholder="Descrição" required>
+      <input name="amount" type="number" min="0.01" step="0.01" placeholder="Valor (R$)" required style="width:140px">
+      <input name="date" type="date" required>
+      <button class="primary" type="submit">Registrar pagamento</button>
+    </form>
+    <div class="stats" id="revenue-stats"></div>
+    <table><thead><tr><th>Data</th><th>Cliente</th><th>Descrição</th><th class="right">Valor</th><th></th></tr></thead><tbody id="payments-body"></tbody></table>
+  </section>
+</main>
+
+<script>
+// ---------------------------------------------------------------------------
+// estado — localStorage, uma chave só. Sem servidor, sem cadastro.
+// ---------------------------------------------------------------------------
+const KEY = 'freela-crm-v1'
+const STAGES = [
+  { id: 'novo', label: 'Novo' },
+  { id: 'contato', label: 'Contato' },
+  { id: 'proposta', label: 'Proposta' },
+  { id: 'fechado', label: 'Fechado' },
+]
+
+const load = () => {
+  try {
+    const raw = JSON.parse(localStorage.getItem(KEY)) || {}
+    return { leads: raw.leads || [], clients: raw.clients || [], payments: raw.payments || [] }
+  } catch { return { leads: [], clients: [], payments: [] } }
+}
+let db = load()
+const save = () => localStorage.setItem(KEY, JSON.stringify(db))
+
+const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7)
+const brl = (n) => n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]))
+const today = () => new Date().toISOString().slice(0, 10)
+const monthKey = (d) => d.slice(0, 7)
+
+// ---------------------------------------------------------------------------
+// pipeline (kanban com drag & drop nativo)
+// ---------------------------------------------------------------------------
+function renderBoard () {
+  const board = document.getElementById('board')
+  board.innerHTML = STAGES.map((stage) => {
+    const leads = db.leads.filter((l) => l.stage === stage.id)
+    const total = leads.reduce((s, l) => s + (Number(l.value) || 0), 0)
+    return `<div class="col" data-stage="${stage.id}">
+      <h3>${stage.label}<span>${leads.length} · ${brl(total)}</span></h3>
+      ${leads.map(leadCard).join('') || '<p class="empty">vazio</p>'}
+    </div>`
+  }).join('')
+  wireDrag()
+}
+
+function leadCard (l) {
+  const fu = l.followup
+    ? `<span class="badge ${fu < today() ? 'late' : fu === today() ? 'due' : ''}">follow-up ${fu.split('-').reverse().join('/')}</span>`
+    : ''
+  return `<article class="lead" draggable="true" data-id="${l.id}">
+    <div class="name">${esc(l.name)}</div>
+    ${l.company ? `<div class="co">${esc(l.company)}</div>` : ''}
+    ${l.notes ? `<div class="note">${esc(l.notes)}</div>` : ''}
+    <div class="foot">
+      <span class="val">${l.value ? brl(Number(l.value)) : ''}</span>
+      <span>
+        ${fu}
+        <button data-del="${l.id}" title="remover">×</button>
+      </span>
+    </div>
+  </article>`
+}
+
+function wireDrag () {
+  const board = document.getElementById('board')
+  board.querySelectorAll('.lead').forEach((el) => {
+    el.ondragstart = (e) => e.dataTransfer.setData('text/plain', el.dataset.id)
+  })
+  board.querySelectorAll('.col').forEach((col) => {
+    col.ondragover = (e) => { e.preventDefault(); col.classList.add('over') }
+    col.ondragleave = () => col.classList.remove('over')
+    col.ondrop = (e) => {
+      e.preventDefault()
+      col.classList.remove('over')
+      const lead = db.leads.find((l) => l.id === e.dataTransfer.getData('text/plain'))
+      if (!lead || lead.stage === col.dataset.stage) return
+      lead.stage = col.dataset.stage
+      // mover para "fechado" promove o lead a cliente automaticamente
+      if (lead.stage === 'fechado' && !db.clients.some((c) => c.id === lead.clientId)) {
+        const client = { id: uid(), name: lead.name, company: lead.company, email: lead.email, phone: lead.phone, notes: lead.notes || '' }
+        lead.clientId = client.id
+        db.clients.push(client)
+      }
+      save(); renderAll()
+    }
+  })
+  board.querySelectorAll('[data-del]').forEach((b) => {
+    b.onclick = () => {
+      db.leads = db.leads.filter((l) => l.id !== b.dataset.del)
+      save(); renderAll()
+    }
+  })
+}
+
+document.getElementById('lead-form').onsubmit = (e) => {
+  e.preventDefault()
+  const f = new FormData(e.target)
+  db.leads.push({
+    id: uid(), stage: 'novo',
+    name: f.get('name').trim(), company: f.get('company').trim(), email: f.get('email').trim(),
+    phone: f.get('phone').trim(), value: f.get('value') ? Number(f.get('value')) : 0,
+    followup: f.get('followup') || '', notes: '',
+  })
+  save(); e.target.reset(); renderAll()
+}
+
+// ---------------------------------------------------------------------------
+// clientes
+// ---------------------------------------------------------------------------
+function renderClients () {
+  const body = document.getElementById('clients-body')
+  body.innerHTML = db.clients.length
+    ? db.clients.map((c) => `<tr>
+        <td>${esc(c.name)}</td><td>${esc(c.company) || '—'}</td>
+        <td>${esc(c.email) || ''}${c.phone ? ' · ' + esc(c.phone) : ''}</td>
+        <td>${esc(c.notes) || '—'}</td>
+        <td class="right"><button data-cdel="${c.id}" style="background:none;border:none;color:var(--dim);cursor:pointer;font-size:16px">×</button></td>
+      </tr>`).join('')
+    : '<tr><td colspan="5" class="empty">Nenhum cliente. Mova um lead para "Fechado" ou cadastre aqui.</td></tr>'
+  body.querySelectorAll('[data-cdel]').forEach((b) => {
+    b.onclick = () => { db.clients = db.clients.filter((c) => c.id !== b.dataset.cdel); save(); renderAll() }
+  })
+}
+
+document.getElementById('client-form').onsubmit = (e) => {
+  e.preventDefault()
+  const f = new FormData(e.target)
+  db.clients.push({ id: uid(), name: f.get('name').trim(), company: f.get('company').trim(), email: f.get('email').trim(), phone: f.get('phone').trim(), notes: f.get('notes').trim() })
+  save(); e.target.reset(); renderAll()
+}
+
+// ---------------------------------------------------------------------------
+// receita
+// ---------------------------------------------------------------------------
+function renderRevenue () {
+  const month = monthKey(today())
+  const monthTotal = db.payments.filter((p) => monthKey(p.date) === month).reduce((s, p) => s + Number(p.amount), 0)
+  const allTotal = db.payments.reduce((s, p) => s + Number(p.amount), 0)
+  const avgTicket = db.payments.length ? allTotal / db.payments.length : 0
+
+  document.getElementById('revenue-stats').innerHTML = [
+    ['Este mês', brl(monthTotal)], ['Total acumulado', brl(allTotal)],
+    ['Ticket médio', brl(avgTicket)], ['Pagamentos', db.payments.length],
+  ].map(([h, v]) => `<div class="card"><h3>${h}</h3><div class="v">${v}</div></div>`).join('')
+
+  const body = document.getElementById('payments-body')
+  body.innerHTML = db.payments.length
+    ? [...db.payments].sort((a, b) => b.date.localeCompare(a.date)).map((p) => `<tr>
+        <td>${p.date.split('-').reverse().join('/')}</td><td>${esc(p.client)}</td><td>${esc(p.description)}</td>
+        <td class="num">${brl(Number(p.amount))}</td>
+        <td class="right"><button data-pdel="${p.id}" style="background:none;border:none;color:var(--dim);cursor:pointer;font-size:16px">×</button></td>
+      </tr>`).join('')
+    : '<tr><td colspan="5" class="empty">Nenhum pagamento registrado.</td></tr>'
+  body.querySelectorAll('[data-pdel]').forEach((b) => {
+    b.onclick = () => { db.payments = db.payments.filter((p) => p.id !== b.dataset.pdel); save(); renderAll() }
+  })
+}
+
+document.getElementById('payment-form').onsubmit = (e) => {
+  e.preventDefault()
+  const f = new FormData(e.target)
+  db.payments.push({ id: uid(), client: f.get('client').trim(), description: f.get('description').trim(), amount: Number(f.get('amount')), date: f.get('date') })
+  save(); e.target.reset(); e.target.date.value = today(); renderAll()
+}
+
+// ---------------------------------------------------------------------------
+// painel
+// ---------------------------------------------------------------------------
+function renderDashboard () {
+  const open = db.leads.filter((l) => l.stage !== 'fechado')
+  const won = db.leads.filter((l) => l.stage === 'fechado')
+  const conversion = db.leads.length ? (won.length / db.leads.length) * 100 : 0
+  const pipelineValue = open.reduce((s, l) => s + (Number(l.value) || 0), 0)
+  const wonValue = won.reduce((s, l) => s + (Number(l.value) || 0), 0)
+
+  document.getElementById('stats').innerHTML = [
+    ['Leads abertos', open.length], ['Ganhos', won.length],
+    ['Conversão', conversion.toFixed(0) + '%'], ['Valor ganho', brl(wonValue)],
+    ['Pipeline aberto', brl(pipelineValue)], ['Clientes', db.clients.length],
+  ].map(([h, v]) => `<div class="card"><h3>${h}</h3><div class="v">${v}</div></div>`).join('')
+
+  const due = db.leads
+    .filter((l) => l.followup && l.followup <= today() && l.stage !== 'fechado')
+    .sort((a, b) => a.followup.localeCompare(b.followup))
+  document.getElementById('followups').innerHTML = due.length
+    ? due.map((l) => `<li style="padding:12px 0;border-bottom:1px solid var(--line)">
+        <strong>${esc(l.name)}</strong> ${l.company ? '· ' + esc(l.company) : ''}
+        <span class="badge ${l.followup < today() ? 'late' : 'due'}" style="margin-left:8px">${l.followup < today() ? 'atrasado' : 'hoje'}</span>
+      </li>`).join('')
+    : '<li class="empty">Nada pendente.</li>'
+}
+
+// ---------------------------------------------------------------------------
+// navegação
+// ---------------------------------------------------------------------------
+const VIEWS = ['dashboard', 'pipeline', 'clients', 'revenue']
+function show (view) {
+  VIEWS.forEach((v) => document.getElementById(`view-${v}`).classList.toggle('hidden', v !== view))
+  document.querySelectorAll('nav button').forEach((b) => b.setAttribute('aria-current', String(b.dataset.view === view)))
+}
+document.querySelectorAll('nav button').forEach((b) => { b.onclick = () => show(b.dataset.view) })
+
+function renderAll () { renderDashboard(); renderBoard(); renderClients(); renderRevenue() }
+
+// exportar/importar backup — sem isso o CRM é uma caixa preta
+window.crm = {
+  export: () => {
+    const blob = new Blob([JSON.stringify(db, null, 2)], { type: 'application/json' })
+    const a = document.createElement('a')
+    a.href = URL.createObjectURL(blob); a.download = `freela-crm-${today()}.json`; a.click()
+  },
+  import: (json) => { db = { ...load(), ...JSON.parse(json) }; save(); renderAll() },
+}
+
+document.getElementById('payment-form').date.value = today()
+renderAll()
+</script>
+</body>
+</html>
